@@ -12,7 +12,10 @@ namespace avoidance {
 // 180 % (2 * ALPHA_RES) = 0
 // Examples of valid resolution values: 1, 3, 5, 6, 10, 15, 18, 30, 45, 60
 //分辨率 每六度划分一个网格
-const int ALPHA_RES = 10;
+//lc add
+//共72网格，前六十个对应前后左右，后十二个对应上下
+const int UP_DOWN_BLOCK = 6;
+const int ALPHA_RES = 6;
 const int GRID_LENGTH_Z = 360 / ALPHA_RES;
 const int GRID_LENGTH_E = 180 / ALPHA_RES;
 

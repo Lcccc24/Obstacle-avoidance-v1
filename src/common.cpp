@@ -181,6 +181,7 @@ PolarPoint cartesianToPolarHistogram(const Eigen::Vector3f& pos, const Eigen::Ve
 PolarPoint cartesianToPolarHistogram(float x, float y, float z, const Eigen::Vector3f& pos) {
   PolarPoint p_pol(0.0f, 0.0f, 0.0f);
   float den = (Eigen::Vector2f(x, y) - pos.topRows<2>()).norm();
+  //此处的e跟z都是px4坐标系下！
   p_pol.e = std::atan2(z - pos.z(), den) * RAD_TO_DEG;          //(-90.+90)
   p_pol.z = std::atan2(x - pos.x(), y - pos.y()) * RAD_TO_DEG;  //(-180. +180]
   p_pol.r = sqrt((x - pos.x()) * (x - pos.x()) + (y - pos.y()) * (y - pos.y()) + (z - pos.z()) * (z - pos.z()));
@@ -189,6 +190,7 @@ PolarPoint cartesianToPolarHistogram(float x, float y, float z, const Eigen::Vec
 
 PolarPoint cartesianToPolarFCU(const Eigen::Vector3f& pos, const Eigen::Vector3f& origin) {
   PolarPoint p = cartesianToPolarHistogram(pos, origin);
+  //转换到ros系下
   p.z = -p.z + 90.0f;
   p.e = -p.e;
   wrapPolar(p);

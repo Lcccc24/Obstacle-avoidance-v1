@@ -4,7 +4,7 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
- * are met:https://docs.px4.io/v1.12/zh/
+ * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
@@ -46,7 +46,11 @@ using namespace time_literals;
 
 namespace
 {
-static constexpr int INTERNAL_MAP_INCREMENT_DEG = 10; //cannot be lower than 5 degrees, should divide 360 evenly
+//lc add
+//xy平面前后左右分辨率6 共60数据
+//72位数组 前六十存储前后左右，后十二存储上下
+static constexpr int INTERNAL_MAP_UPDOWN_BLOCK = 12;
+static constexpr int INTERNAL_MAP_INCREMENT_DEG = 6; //cannot be lower than 5 degrees, should divide 360 evenly
 static constexpr int INTERNAL_MAP_USED_BINS = 360 / INTERNAL_MAP_INCREMENT_DEG;
 
 static float wrap_360(float f)
@@ -113,7 +117,8 @@ bool CollisionPrevention::is_active()
 	return activated;
 }
 
-void CollisionPrevention::_addObstacleSensorData(const obstacle_distance_s &obstacle, const matrix::Quatf &vehicle_attitude)
+void
+CollisionPrevention::_addObstacleSensorData(const obstacle_distance_s &obstacle, const matrix::Quatf &vehicle_attitude)
 {
 	int msg_index = 0;
 	float vehicle_orientation_deg = math::degrees(Eulerf(vehicle_attitude).psi());
@@ -139,11 +144,12 @@ void CollisionPrevention::_addObstacleSensorData(const obstacle_distance_s &obst
 			}
 		}
 
-		//lc add 
-		for(int i = INTERNAL_MAP_USED_BINS; i < INTERNAL_MAP_USED_BINS + 2; i++){
+		//lc add
+		//todo transform to body frame
+		//前6位为下方数据 后6位为上方数据
+		for(int i = INTERNAL_MAP_USED_BINS; i < INTERNAL_MAP_USED_BINS + INTERNAL_MAP_UPDOWN_BLOCK; i++){
 			_obstacle_map_body_frame.distances[i] = obstacle.distances[i];
 		}
-
 
 	} else if (obstacle.frame == obstacle.MAV_FRAME_BODY_FRD) {
 		// Obstacle message arrives in body frame (front aligned)
@@ -238,7 +244,6 @@ CollisionPrevention::_updateObstacleMap()
 
 		// Update map with obstacle data if the data is not stale
 		if (getElapsedTime(&obstacle_distance.timestamp) < RANGE_STREAM_TIMEOUT_US && obstacle_distance.increment > 0.f) {
-
 			//update message description
 			_obstacle_map_body_frame.timestamp = math::max(_obstacle_map_body_frame.timestamp, obstacle_distance.timestamp);
 			_obstacle_map_body_frame.max_distance = math::max(_obstacle_map_body_frame.max_distance,
@@ -392,20 +397,21 @@ CollisionPrevention::_sensorOrientationToYawOffset(const distance_sensor_s &dist
 	return offset;
 }
 
+
 //lc add
-void CollisionPrevention::_ConstrainSetpoint_Zd(float &setpointz, float stick)
-{	
+void CollisionPrevention::_ConstrainSetpoint_ZDown(float &setpointz, float stick)
+{
     /* 参数说明:
      * stick > 0 向下运动 | stick < 0 向上运动 | 距离单位: 厘米
-     * STOP_GAP_PHASE1: 第一阶段警戒距离(300cm)
-     * STOP_GAP_PHASE2: 第二阶段危险距离(100cm)
+     * STOP_GAP_PHASE1: 第一阶段警戒距离
+     * STOP_GAP_PHASE2: 第二阶段危险距离
      * DECEL_EXPONENT:  指数衰减系数(值越大减速越剧烈)
      */
-    static constexpr float STOP_GAP_PHASE1 = 300.0f;
-    static constexpr float STOP_GAP_PHASE2 = 100.0f;
+    static constexpr float STOP_GAP_PHASE1 = 250.0f;
+    static constexpr float STOP_GAP_PHASE2 = 120.0f;
     static constexpr int CLIP_MAX_PHASE1 = 100;    // 第一阶段需持续推动次数
     static constexpr int CLIP_MAX_PHASE2 = 150;    // 第二阶段需持续推动次数
-    static constexpr float DECEL_EXPONENT = 6.0f;  // 指数衰减强度系数
+    static constexpr float DECEL_EXPONENT = 5.0f;  // 指数衰减强度系数
 
     // 状态变量
     static int phase1_counter = 0;  // 第一阶段操作计数器
@@ -422,7 +428,7 @@ void CollisionPrevention::_ConstrainSetpoint_Zd(float &setpointz, float stick)
                 // 安全模式：强制停止并累积操作计数
                 setpointz = 0.0f;
                 // 摇杆强度>50%时累积，否则重置
-                counter += (stick > 0.5f) ? 1 : -counter;  
+                counter += (stick > 0.5f) ? 1 : -counter;
             } else {
                 // 解除限制后：根据距离指数衰减速度
 				//setpointz = stick * expf(-DECEL_EXPONENT * math::constrain((stop_gap - min_dist) / stop_gap, 0.0f, 1.0f));
@@ -441,40 +447,94 @@ void CollisionPrevention::_ConstrainSetpoint_Zd(float &setpointz, float stick)
     _updateObstacleMap();
 
     // 检查传感器数据有效性(300ms超时)
-    if ((current_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US) 
+    if ((current_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US)
     {
         // 遍历指定区域寻找最小障碍物距离
-		if(_obstacle_map_body_frame.distances[INTERNAL_MAP_USED_BINS] < min_dist)
-        min_dist = _obstacle_map_body_frame.distances[INTERNAL_MAP_USED_BINS];
+		for(int i = INTERNAL_MAP_USED_BINS; i < INTERNAL_MAP_USED_BINS + (INTERNAL_MAP_UPDOWN_BLOCK / 2); ++i){
+			if(_obstacle_map_body_frame.distances[i] < min_dist)
+			min_dist = _obstacle_map_body_frame.distances[i];
+		}
 
         // 分级安全处理
         if (min_dist < STOP_GAP_PHASE2) {       // 进入危险距离
             handlePhase(phase2_counter, CLIP_MAX_PHASE2, STOP_GAP_PHASE2);
             phase1_counter = 0;  // 重置第一阶段计数器
-        } 
+        }
         else if (min_dist < STOP_GAP_PHASE1) {  // 进入警戒距离
             handlePhase(phase1_counter, CLIP_MAX_PHASE1, STOP_GAP_PHASE1);
             phase2_counter = 0;  // 重置第二阶段计数器
-        } 
+        }
         else {  // 安全距离内
             setpointz = stick;
             phase1_counter = phase2_counter = 0;
         }
     }
     else {  // 传感器数据超时处理
-        setpointz = stick;
+        setpointz = 0.0f;
         phase1_counter = phase2_counter = 0;
     }
 
     // 调试数据发布
-    // struct debug_key_value_s dbg{};
-    // strncpy(dbg.key, "min_dist", sizeof(dbg.key));
-    // dbg.value = min_dist;
-    // dbg.timestamp = current_time;
-    // orb_advert_t pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
-    // orb_publish(ORB_ID(debug_key_value), pub_dbg, &dbg);
+    struct debug_key_value_s dbg{};
+    strncpy(dbg.key, "min_dist", sizeof(dbg.key));
+    dbg.value = min_dist;
+    dbg.timestamp = current_time;
+    orb_advert_t pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
+    orb_publish(ORB_ID(debug_key_value), pub_dbg, &dbg);
 }
 
+void CollisionPrevention::_ConstrainSetpoint_ZUp(float &setpointz, float stick){
+
+	static constexpr float DECEL_EXPONENT = 4.0f;  // 指数衰减强度系数
+	const constexpr float stop_gap = 200.0f;
+	const constexpr float slow_gap = 350.0f;
+    const hrt_abstime current_time = getTime();
+	// 初始化最小距离为最大可测距离
+    float min_dist = _obstacle_map_body_frame.max_distance;
+
+	// 更新障碍物地图数据
+    _updateObstacleMap();
+
+    // 检查传感器数据有效性(300ms超时)
+    if ((current_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US)
+    {
+
+		if(stick < 0.0f)
+		{
+			// 遍历指定区域寻找最小障碍物距离
+			for(int i = INTERNAL_MAP_USED_BINS + (INTERNAL_MAP_UPDOWN_BLOCK / 2); i < INTERNAL_MAP_USED_BINS + INTERNAL_MAP_UPDOWN_BLOCK; ++i){
+				if(_obstacle_map_body_frame.distances[i] < min_dist)
+				min_dist = _obstacle_map_body_frame.distances[i];
+			}
+
+			if(min_dist < stop_gap)
+				setpointz = 0.0f;
+
+			else if(min_dist < slow_gap){
+				// 计算减速系数：越接近停止距离，衰减越强
+				const float decel_range = slow_gap - stop_gap;
+				const float distance_ratio = (min_dist - stop_gap) / decel_range;
+
+				// 使用三次曲线实现平滑过渡（可替换为其他缓动函数）
+				const float eased_ratio = distance_ratio * distance_ratio * (3.0f - 2.0f * distance_ratio);
+				const float speed_decay = expf(-DECEL_EXPONENT * (1.0f - eased_ratio));
+
+				setpointz = stick * speed_decay;
+			}
+			else
+				return;
+		}
+
+		else
+			return;
+	}
+
+	else{
+		setpointz = 0.0f;
+	}
+
+
+}
 
 
 void
@@ -498,7 +558,7 @@ CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, const Vec
 	const hrt_abstime constrain_time = getTime();
 	int num_fov_bins = 0;
 
-	if ((constrain_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US) { 
+	if ((constrain_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US) {
 		if (setpoint_length > 0.001f) {
 
 			Vector2f setpoint_dir = setpoint / setpoint_length;

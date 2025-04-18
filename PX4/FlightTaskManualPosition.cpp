@@ -68,7 +68,7 @@ void FlightTaskManualPosition::_scaleSticks()
 	FlightTaskManualAltitude::_scaleSticks();
 
 	Vector2f stick_xy = _sticks.getPitchRollExpo();
-	
+
 	Sticks::limitStickUnitLengthXY(stick_xy);
 
 	if (_param_mpc_vel_man_side.get() >= 0.f) {
@@ -97,12 +97,12 @@ void FlightTaskManualPosition::_scaleSticks()
 	// collision prevention
 	if (_collision_prevention.is_active()) {
 		_collision_prevention.modifySetpoint(vel_sp_xy, velocity_scale, _position.xy(), _velocity.xy());
-		float temp = _velocity_setpoint(2);
-		// todo up obstacle avoidance
-		//down obstacle avoidance
-		_collision_prevention._ConstrainSetpoint_Zd(_velocity_setpoint(2),temp);
+		//lc add
+		float temp_down = _velocity_setpoint(2);
+		_collision_prevention._ConstrainSetpoint_ZDown(_velocity_setpoint(2),temp_down);
+		float temp_up = _velocity_setpoint(2);
+		_collision_prevention._ConstrainSetpoint_ZUp(_velocity_setpoint(2),temp_up);
 	}
-
 	_velocity_setpoint.xy() = vel_sp_xy;
 }
 

@@ -82,7 +82,9 @@ public:
 	void modifySetpoint(matrix::Vector2f &original_setpoint, const float max_speed,
 			    const matrix::Vector2f &curr_pos, const matrix::Vector2f &curr_vel);
 
-	void _ConstrainSetpoint_Zd(float &z_setpoint, float stick);
+	//lc add
+	void _ConstrainSetpoint_ZDown(float &z_setpoint, float stick);
+	void _ConstrainSetpoint_ZUp(float &z_setpoint, float stick);
 
 protected:
 
@@ -122,7 +124,7 @@ protected:
 	virtual hrt_abstime getElapsedTime(const hrt_abstime *ptr);
 
 
-private: 
+private:
 
 	bool _interfering{false};		/**< states if the collision prevention interferes with the user input */
 	bool _was_active{false};		/**< states if the collision prevention interferes with the user input */

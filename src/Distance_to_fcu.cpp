@@ -101,6 +101,7 @@ void Distance_to_fcu::updateObstacleDistanceMsg(Histogram hist) {
 
     // is bin inside FOV?
     //std::cout << "j: " << j << std::endl;
+    //前后左右数据共60个
     if (histogramIndexYawInsideFOV(fov_fcu_frame_, j, position_, yaw_fcu_frame_deg_)) {
       msg.ranges.push_back(dist > min_sensor_range_ ? dist : max_sensor_range_ + 0.01f);
     } else {
@@ -111,23 +112,28 @@ void Distance_to_fcu::updateObstacleDistanceMsg(Histogram hist) {
 
   //lc add
   //down obstacle data
-  float min_dist_down = max_sensor_range_ + 0.01f;
-  for (int i = 0; i < GRID_LENGTH_Z; ++i) {
-    float dist = hist.get_dist(1, i);
-    if(dist < min_dist_down && dist != 0.0f)
-      min_dist_down = dist;
+  for (int i = 0; i < UP_DOWN_BLOCK; ++i) {
+    float min_dist_down = max_sensor_range_ + 0.01f;
+    for(int j = 0; j < (GRID_LENGTH_Z / UP_DOWN_BLOCK); ++j){
+      int k = (j + i * GRID_LENGTH_Z / UP_DOWN_BLOCK + GRID_LENGTH_Z / 2) % GRID_LENGTH_Z;
+      float dist = hist.get_dist(1, k);
+      if(dist < min_dist_down && dist != 0.0f)
+        min_dist_down = dist;
+    }
+    msg.ranges.push_back(min_dist_down);
   }
-  msg.ranges.push_back(min_dist_down);
 
   //up obstacle data
-  float min_dist_up = max_sensor_range_ + 0.01f;
-  for (int i = 0; i < GRID_LENGTH_Z; ++i) {
-    float dist = hist.get_dist(2, i);
-    if(dist < min_dist_up && dist != 0.0f)
-      min_dist_up = dist;
+  for (int i = 0; i < UP_DOWN_BLOCK; ++i) {
+    float min_dist_down = max_sensor_range_ + 0.01f;
+    for(int j = 0; j < (GRID_LENGTH_Z / UP_DOWN_BLOCK); ++j){
+      int k = (j + i * GRID_LENGTH_Z / UP_DOWN_BLOCK + GRID_LENGTH_Z / 2) % GRID_LENGTH_Z;
+      float dist = hist.get_dist(2, k);
+      if(dist < min_dist_down && dist != 0.0f)
+        min_dist_down = dist;
+    }
+    msg.ranges.push_back(min_dist_down);
   }
-  msg.ranges.push_back(min_dist_up);
-
 
   distance_data_ = msg;
 }
@@ -144,9 +150,9 @@ void Distance_to_fcu::updateObstacleDistanceMsg(Histogram hist) {
  */
 void Distance_to_fcu::compressHistogramElevation(Histogram& new_hist, const Histogram& input_hist, const Eigen::Vector3f& position) {
   //need change
-  float vertical_FOV_range_sensor = 20.0;
+  float vertical_FOV_range_sensor = 30.0;
   //need change
-  float vertical_cap = 1.0f;  // ignore obstacles, which are more than that above or below the drone.
+  float vertical_cap = 1.5f;  // ignore obstacles, which are more than that above or below the drone.
   PolarPoint p_pol_lower(-1.0f * vertical_FOV_range_sensor / 2.0f, 0.0f, 0.0f);
   PolarPoint p_pol_upper(vertical_FOV_range_sensor / 2.0f, 0.0f, 0.0f);
   Eigen::Vector2i p_ind_lower = polarToHistogramIndex(p_pol_lower, ALPHA_RES);
@@ -181,7 +187,7 @@ void Distance_to_fcu::compressHistogramElevation(Histogram& new_hist, const Hist
         PolarPoint obstacle = histogramIndexToPolar(e, z, ALPHA_RES, input_hist.get_dist(e, z));
         Eigen::Vector3f obstacle_cartesian = polarHistogramToCartesian(obstacle, position);
         float height_difference = std::abs(position.z() - obstacle_cartesian.z());
-        if (height_difference < 10.0f &&
+        if (height_difference < 15.0f &&
             (input_hist.get_dist(e, z) < new_hist.get_dist(1, z) || new_hist.get_dist(1, z) == 0.f))
           new_hist.set_dist(1, z, input_hist.get_dist(e, z));
       }
@@ -197,12 +203,12 @@ void Distance_to_fcu::compressHistogramElevation(Histogram& new_hist, const Hist
   for (int e = u_ind_lower.y(); e <= u_ind_upper.y(); e++) {
     for (int z = 0; z < GRID_LENGTH_Z; z++) {
       if (input_hist.get_dist(e, z) > 0) {
-        // check if inside vertical range
-        //std::cout << "aaaaa" << std::endl;
-        // PolarPoint obstacle = histogramIndexToPolar(e, z, ALPHA_RES, input_hist.get_dist(e, z));
-        // Eigen::Vector3f obstacle_cartesian = polarHistogramToCartesian(obstacle, position);
-        // float height_difference = std::abs(position.z() - obstacle_cartesian.z());
-        if(input_hist.get_dist(e, z) < new_hist.get_dist(2, z) || new_hist.get_dist(2, z) == 0.f)
+        //check if inside vertical range
+        PolarPoint obstacle = histogramIndexToPolar(e, z, ALPHA_RES, input_hist.get_dist(e, z));
+        Eigen::Vector3f obstacle_cartesian = polarHistogramToCartesian(obstacle, position);
+        float height_difference = std::abs(position.z() - obstacle_cartesian.z());
+        if (height_difference < 15.0f &&
+            (input_hist.get_dist(e, z) < new_hist.get_dist(2, z) || new_hist.get_dist(2, z) == 0.f))
           new_hist.set_dist(2, z, input_hist.get_dist(e, z));
       }
     }
