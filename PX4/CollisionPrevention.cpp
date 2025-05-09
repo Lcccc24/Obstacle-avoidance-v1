@@ -40,6 +40,9 @@
 #include "CollisionPrevention.hpp"
 #include <px4_platform_common/events.h>
 #include <uORB/topics/debug_key_value.h>
+#include <uORB/topics/debug_vect.h>
+//#include <vector>
+//#include <algorithm>
 
 using namespace matrix;
 using namespace time_literals;
@@ -402,23 +405,27 @@ CollisionPrevention::_sensorOrientationToYawOffset(const distance_sensor_s &dist
 void CollisionPrevention::_ConstrainSetpoint_ZDown(float &setpointz, float stick)
 {
     /* 参数说明:
-     * stick > 0 向下运动 | stick < 0 向上运动 | 距离单位: 厘米
-     * STOP_GAP_PHASE1: 第一阶段警戒距离
-     * STOP_GAP_PHASE2: 第二阶段危险距离
+     * stick > 0 向下运动 | stick < 0 向上运动 | 距离单位: 厘米/---
+     * STOP_GAP_PHASE1: 第一阶段警戒距离 //m
+     * STOP_GAP_PHASE2: 第二阶段危险距离 //m
      * DECEL_EXPONENT:  指数衰减系数(值越大减速越剧烈)
      */
-    static constexpr float STOP_GAP_PHASE1 = 250.0f;
-    static constexpr float STOP_GAP_PHASE2 = 120.0f;
+    // static constexpr float STOP_GAP_PHASE1 = 250.0f;
+    // static constexpr float STOP_GAP_PHASE2 = 120.0f;
+	// static constexpr float DECEL_EXPONENT = 5.0f;  // 指数衰减强度系数
+	const float STOP_GAP_PHASE1 = _param_cp_down_gate1.get();
+	const float STOP_GAP_PHASE2 = _param_cp_down_gate2.get();
+	const float DECEL_EXPONENT = _param_cp_down_decay.get();  // 指数衰减强度系数
     static constexpr int CLIP_MAX_PHASE1 = 100;    // 第一阶段需持续推动次数
     static constexpr int CLIP_MAX_PHASE2 = 150;    // 第二阶段需持续推动次数
-    static constexpr float DECEL_EXPONENT = 5.0f;  // 指数衰减强度系数
+
 
     // 状态变量
     static int phase1_counter = 0;  // 第一阶段操作计数器
     static int phase2_counter = 0;  // 第二阶段操作计数器
 
 	// 初始化最小距离为最大可测距离
-    float min_dist = _obstacle_map_body_frame.max_distance;
+    float min_dist = _obstacle_map_body_frame.max_distance * 0.01f;
     const hrt_abstime current_time = getTime();
 
     // 公共处理逻辑
@@ -451,8 +458,8 @@ void CollisionPrevention::_ConstrainSetpoint_ZDown(float &setpointz, float stick
     {
         // 遍历指定区域寻找最小障碍物距离
 		for(int i = INTERNAL_MAP_USED_BINS; i < INTERNAL_MAP_USED_BINS + (INTERNAL_MAP_UPDOWN_BLOCK / 2); ++i){
-			if(_obstacle_map_body_frame.distances[i] < min_dist)
-			min_dist = _obstacle_map_body_frame.distances[i];
+			if(_obstacle_map_body_frame.distances[i] * 0.01f < min_dist)
+			min_dist = _obstacle_map_body_frame.distances[i] * 0.01f;
 		}
 
         // 分级安全处理
@@ -475,22 +482,25 @@ void CollisionPrevention::_ConstrainSetpoint_ZDown(float &setpointz, float stick
     }
 
     // 调试数据发布
-    struct debug_key_value_s dbg{};
-    strncpy(dbg.key, "min_dist", sizeof(dbg.key));
-    dbg.value = min_dist;
-    dbg.timestamp = current_time;
-    orb_advert_t pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
-    orb_publish(ORB_ID(debug_key_value), pub_dbg, &dbg);
+    // struct debug_key_value_s dbg{};
+    // strncpy(dbg.key, "min_dist", sizeof(dbg.key));
+    // dbg.value = min_dist;
+    // dbg.timestamp = current_time;
+    // orb_advert_t pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
+    // orb_publish(ORB_ID(debug_key_value), pub_dbg, &dbg);
 }
 
 void CollisionPrevention::_ConstrainSetpoint_ZUp(float &setpointz, float stick){
 
-	static constexpr float DECEL_EXPONENT = 4.0f;  // 指数衰减强度系数
-	const constexpr float stop_gap = 200.0f;
-	const constexpr float slow_gap = 350.0f;
+	// static constexpr float DECEL_EXPONENT = 4.0f;  // 指数衰减强度系数
+	// const constexpr float stop_gap = 200.0f;
+	// const constexpr float slow_gap = 350.0f;
+	const float slow_gap = _param_cp_up_gate1.get();
+	const float stop_gap = _param_cp_up_gate2.get();
+	const float DECEL_EXPONENT = _param_cp_up_decay.get();  // 指数衰减强度系数
     const hrt_abstime current_time = getTime();
 	// 初始化最小距离为最大可测距离
-    float min_dist = _obstacle_map_body_frame.max_distance;
+    float min_dist = _obstacle_map_body_frame.max_distance * 0.01f;
 
 	// 更新障碍物地图数据
     _updateObstacleMap();
@@ -503,8 +513,8 @@ void CollisionPrevention::_ConstrainSetpoint_ZUp(float &setpointz, float stick){
 		{
 			// 遍历指定区域寻找最小障碍物距离
 			for(int i = INTERNAL_MAP_USED_BINS + (INTERNAL_MAP_UPDOWN_BLOCK / 2); i < INTERNAL_MAP_USED_BINS + INTERNAL_MAP_UPDOWN_BLOCK; ++i){
-				if(_obstacle_map_body_frame.distances[i] < min_dist)
-				min_dist = _obstacle_map_body_frame.distances[i];
+				if(_obstacle_map_body_frame.distances[i] * 0.01f < min_dist)
+				min_dist = _obstacle_map_body_frame.distances[i] * 0.01f;
 			}
 
 			if(min_dist < stop_gap)
@@ -537,138 +547,220 @@ void CollisionPrevention::_ConstrainSetpoint_ZUp(float &setpointz, float stick){
 }
 
 
-void
-CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, const Vector2f &curr_pos,
-		const Vector2f &curr_vel)
+//xy平面刹停逻辑
+void CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, const Vector2f &curr_pos, const Vector2f &curr_vel)
 {
-	_updateObstacleMap();
+    //更新obstacle_distance
+    _updateObstacleMap();
 
-	// read parameters
-	const float col_prev_d = _param_cp_dist.get();
-	const float col_prev_dly = _param_cp_delay.get();
-	const bool move_no_data = _param_cp_go_nodata.get();
-	const float xy_p = _param_mpc_xy_p.get();
-	const float max_jerk = _param_mpc_jerk_max.get();
-	const float max_accel = _param_mpc_acc_hor.get();
-	const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
-	const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
+    // read parameters
+    //最小安全距离
+    const float col_prev_d = _param_cp_dist.get();
+    //距离延时时间 附加
+    const float col_prev_dly = _param_cp_delay.get();
+    //无数据时是否允许运动
+    const bool move_no_data = _param_cp_go_nodata.get();
+	//运动学参数获取
+    const float xy_p = _param_mpc_xy_p.get();
+    const float max_jerk = _param_mpc_jerk_max.get();
+    const float max_accel = _param_mpc_acc_hor.get();
+    const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
+    const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
 
-	const float setpoint_length = setpoint.norm();
+	//设定点模长
+    const float setpoint_length = setpoint.norm();
 
-	const hrt_abstime constrain_time = getTime();
-	int num_fov_bins = 0;
+    const hrt_abstime constrain_time = getTime();
+	//记录有效扇区数据个数
+    int num_fov_bins = 0;
 
-	if ((constrain_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US) {
-		if (setpoint_length > 0.001f) {
+	//调试数据发布
+	//static orb_advert_t dbg_angle_pub = nullptr;
 
-			Vector2f setpoint_dir = setpoint / setpoint_length;
-			float vel_max = setpoint_length;
-			const float min_dist_to_keep = math::max(_obstacle_map_body_frame.min_distance / 100.0f, col_prev_d);
+	//数据有效 进入避障逻辑
+    if ((constrain_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US) {
+		//用户已打杆
+        if (setpoint_length > 0.001f) {
+            
+			//lc add 检测范围正负18度
+			const float rad_threshold = math::radians(18.0f);
+            //xy平面 setpoint_dir设定值归一化 归一化为单位向量
+            Vector2f setpoint_dir = setpoint / setpoint_length;
+            //最大速度值 设置为模长
+            float vel_max = setpoint_length;
+            //最小安全距离 
+            const float min_dist_to_keep = math::max(_obstacle_map_body_frame.min_distance / 100.0f, col_prev_d);
 
-			const float sp_angle_body_frame = atan2f(setpoint_dir(1), setpoint_dir(0)) - vehicle_yaw_angle_rad;
-			const float sp_angle_with_offset_deg = wrap_360(math::degrees(sp_angle_body_frame) -
-							       _obstacle_map_body_frame.angle_offset);
-			int sp_index = floor(sp_angle_with_offset_deg / INTERNAL_MAP_INCREMENT_DEG);
+			//lc add 世界系设定弧度
+			const float sp_rad_local = wrap_2pi((atan2f(setpoint_dir(1), setpoint_dir(0))));
+            
+            //atan2f(setpoint_dir(1), setpoint_dir(0))为世界系下设定速度 减去机体yaw角得到 机体系下设定速度方向
+            const float sp_angle_body_frame = atan2f(setpoint_dir(1), setpoint_dir(0)) - vehicle_yaw_angle_rad;
+            //缩放到0-360
+            const float sp_angle_with_offset_deg = wrap_360(math::degrees(sp_angle_body_frame) -
+                                   _obstacle_map_body_frame.angle_offset);
+            //设定值索引
+            int sp_index = floor(sp_angle_with_offset_deg / INTERNAL_MAP_INCREMENT_DEG);
 
-			// change setpoint direction slightly (max by _param_cp_guide_ang degrees) to help guide through narrow gaps
-			_adaptSetpointDirection(setpoint_dir, sp_index, vehicle_yaw_angle_rad);
+			//_obstacle_map_body_frame.distances[i]注意障碍物信息数组 为机体系下
 
-			// limit speed for safe flight
-			for (int i = 0; i < INTERNAL_MAP_USED_BINS; i++) { // disregard unused bins at the end of the message
+            // change setpoint direction slightly (max by _param_cp_guide_ang degrees) to help guide through narrow gaps
+            // 角度允许情况下实现绕飞
+            //_adaptSetpointDirection(setpoint_dir, sp_index, vehicle_yaw_angle_rad);
 
-				// delete stale values
-				const hrt_abstime data_age = constrain_time - _data_timestamps[i];
+            // limit speed for safe flight
+            //遍历每一个扇区
+            for (int i = 0; i < INTERNAL_MAP_USED_BINS; i++) { // disregard unused bins at the end of the message
 
-				if (data_age > RANGE_STREAM_TIMEOUT_US) {
-					_obstacle_map_body_frame.distances[i] = UINT16_MAX;
-				}
+                // delete stale values
+                //保留计算数据时间
+                const hrt_abstime data_age = constrain_time - _data_timestamps[i];
+                
+                //超时则将所有数据置换为无效
+                if (data_age > RANGE_STREAM_TIMEOUT_US) {
+                    _obstacle_map_body_frame.distances[i] = UINT16_MAX;
+                }
+                
+                //转换单位为米 m
+                const float distance = _obstacle_map_body_frame.distances[i] * 0.01f; // convert to meters
+                const float max_range = _data_maxranges[i] * 0.01f; // convert to meters
+                
+                //当前循环中的扇区的对应弧度
+                float angle = math::radians((float)i * INTERNAL_MAP_INCREMENT_DEG + _obstacle_map_body_frame.angle_offset);
 
-				const float distance = _obstacle_map_body_frame.distances[i] * 0.01f; // convert to meters
-				const float max_range = _data_maxranges[i] * 0.01f; // convert to meters
-				float angle = math::radians((float)i * INTERNAL_MAP_INCREMENT_DEG + _obstacle_map_body_frame.angle_offset);
+                // convert from body to local frame in the range [0, 2*pi]
+                //机体系下弧度 + 当前yaw角 转换为世界系下弧度
+                angle = wrap_2pi(vehicle_yaw_angle_rad + angle);
 
-				// convert from body to local frame in the range [0, 2*pi]
-				angle = wrap_2pi(vehicle_yaw_angle_rad + angle);
+				// struct debug_key_value_s dbg_angle{};
+				// strncpy(dbg_angle.key, "angle", sizeof(dbg_angle.key));
+				// dbg_angle.value = angle;
+				// dbg_angle.timestamp = constrain_time;
 
-				// get direction of current bin
-				const Vector2f bin_direction = {cosf(angle), sinf(angle)};
+				// if (dbg_angle_pub == nullptr) {
+				// 	dbg_angle_pub = orb_advertise(ORB_ID(debug_key_value), &dbg_angle);
+				// } else {
+				// 	orb_publish(ORB_ID(debug_key_value), dbg_angle_pub, &dbg_angle);
+				// }
 
-				//count number of bins in the field of valid_new
-				if (_obstacle_map_body_frame.distances[i] < UINT16_MAX) {
-					num_fov_bins ++;
-				}
+                // get direction of current bin
+                //当前扇区值角度转换为xy方向向量
+				//转换为世界系 统一后方便与setpoint_dir比较
+                const Vector2f bin_direction = {cosf(angle), sinf(angle)};
 
-				if (_obstacle_map_body_frame.distances[i] > _obstacle_map_body_frame.min_distance
-				    && _obstacle_map_body_frame.distances[i] < UINT16_MAX) {
-
-					if (setpoint_dir.dot(bin_direction) > 0) {
-						// calculate max allowed velocity with a P-controller (same gain as in the position controller)
-						const float curr_vel_parallel = math::max(0.f, curr_vel.dot(bin_direction));
-						float delay_distance = curr_vel_parallel * col_prev_dly;
-
-						if (distance < max_range) {
-							delay_distance += curr_vel_parallel * (data_age * 1e-6f);
-						}
-
-						const float stop_distance = math::max(0.f, distance - min_dist_to_keep - delay_distance);
-						const float vel_max_posctrl = xy_p * stop_distance;
-
-						const float vel_max_smooth = math::trajectory::computeMaxSpeedFromDistance(max_jerk, max_accel, stop_distance, 0.f);
-						const float projection = bin_direction.dot(setpoint_dir);
-						float vel_max_bin = vel_max;
-
-						if (projection > 0.01f) {
-							vel_max_bin = math::min(vel_max_posctrl, vel_max_smooth) / projection;
-						}
-
-						// constrain the velocity
-						if (vel_max_bin >= 0) {
-							vel_max = math::min(vel_max, vel_max_bin);
-						}
+                //count number of bins in the field of valid_new
+                //如果数据有效 记录有效扇区数据个数
+                if (_obstacle_map_body_frame.distances[i] < UINT16_MAX) {
+                    num_fov_bins ++;
+                }
+                
+                //数据有效 
+                if (_obstacle_map_body_frame.distances[i] > _obstacle_map_body_frame.min_distance
+                    && _obstacle_map_body_frame.distances[i] < UINT16_MAX) {
+                       
+					//不在检测范围内 直接跳过循环
+					float rad_diff = wrap_pi(angle - sp_rad_local);
+                    if (fabsf(rad_diff) > rad_threshold) {
+						continue;
 					}
 
-				} else if (_obstacle_map_body_frame.distances[i] == UINT16_MAX && i == sp_index) {
-					if (!move_no_data || (move_no_data && _data_fov[i])) {
-						vel_max = 0.f;
+					//在范围内时进行避障逻辑
+
+					// calculate max allowed velocity with a P-controller (same gain as in the position controller)
+					//当前速度在该方向的投影
+					const float curr_vel_parallel = math::max(0.f, curr_vel.dot(bin_direction));
+					//延迟导致的位移
+					float delay_distance = curr_vel_parallel * col_prev_dly;
+
+					if (distance < max_range) {
+						//数据老化补偿
+						delay_distance += curr_vel_parallel * (data_age * 1e-6f);
 					}
-				}
-			}
 
-			//if the sensor field of view is zero, never allow to move (even if move_no_data=1)
-			if (num_fov_bins == 0) {
-				vel_max = 0.f;
-			}
+					//安全距离为识别到的障碍距离-最小安全距离-延迟位移
+					//若stop_distance为0 则输出vel_max_posctrl直接为0
+					const float stop_distance = math::max(0.f, distance - min_dist_to_keep - delay_distance);
+					//位置控制器速度限制；距离越近 速度被限制得越小
+					const float vel_max_posctrl = xy_p * stop_distance;
 
-			setpoint = setpoint_dir * vel_max;
-		}
+					//调用函数光滑化目标设定值  运动学平滑限制
+					const float vel_max_smooth = math::trajectory::computeMaxSpeedFromDistance(max_jerk, max_accel, stop_distance, 0.f);
+					//投影值（projection）越大（方向越一致）d
+					const float projection = bin_direction.dot(setpoint_dir);
+					float vel_max_bin = vel_max;
 
-	} else {
-		//allow no movement
-		float vel_max = 0.f;
-		setpoint = setpoint * vel_max;
+					if (projection > 0.01f) {
+						//综合限制  projection越大方向越一致，即分母越大，vel_max_bin 越小，速度限制越严格
+						//结合位置控制器（响应快）和运动学模型（平滑性）生成速度限制
+						vel_max_bin = math::min(vel_max_posctrl, vel_max_smooth) / projection;
+					}
 
-		// if distance data is stale, switch to Loiter
-		if (getElapsedTime(&_last_timeout_warning) > 1_s && getElapsedTime(&_time_activated) > 1_s) {
+					// constrain the velocity
+					if (vel_max_bin >= 0) {
+						vel_max = math::min(vel_max, vel_max_bin);
+					}
+				
+                    
+                  //如果目标位置没有传感器数据覆盖，则根据move_no_data决定是否冻结速度
+                } else if (_obstacle_map_body_frame.distances[i] == UINT16_MAX && i == sp_index) {
+                    if (!move_no_data || (move_no_data && _data_fov[i])) {
+                        vel_max = 0.f;
+                    }
+                }
+            }
 
-			if ((constrain_time - _obstacle_map_body_frame.timestamp) > TIMEOUT_HOLD_US
-			    && getElapsedTime(&_time_activated) > TIMEOUT_HOLD_US) {
-				_publishVehicleCmdDoLoiter();
-			}
+            //if the sensor field of view is zero, never allow to move (even if move_no_data=1)
+            //如果传感器完全失去有效数据，即一个有效扇区数据都没有
+            if (num_fov_bins == 0) {
+                vel_max = 0.f;
+            }
+            //调整后最终值为单位方向向量*速度  
+            //该函数主要通过遍历并计算邻近扇区（点乘>0）的障碍物信息来调整速度值
+            // 调整方向主要在_adaptSetpointDirection 函数中
+            setpoint = setpoint_dir * vel_max;
+        }
 
-			_last_timeout_warning = getTime();
-		}
+    } else {
+		//如果传感器数据超时 则禁止机动
+        //allow no movement
+        float vel_max = 0.f;
+        setpoint = setpoint * vel_max;
 
+        // if distance data is stale, switch to Loiter
+		//当数据丢失超过一定阈值后 传感器可能发生故障 触发悬停
+        if (getElapsedTime(&_last_timeout_warning) > 1_s && getElapsedTime(&_time_activated) > 1_s) {
 
-	}
+            if ((constrain_time - _obstacle_map_body_frame.timestamp) > TIMEOUT_HOLD_US
+                && getElapsedTime(&_time_activated) > TIMEOUT_HOLD_US) {
+                //发布进入悬停模式
+                _publishVehicleCmdDoLoiter();
+            }
+
+            _last_timeout_warning = getTime();
+        }
+
+    }
 }
 
-void
+ void
 CollisionPrevention::modifySetpoint(Vector2f &original_setpoint, const float max_speed, const Vector2f &curr_pos,
-				    const Vector2f &curr_vel)
+				    const Vector2f &curr_vel, float &setpointz)
 {
+	const bool cp_mode = _param_cp_mode.get();
 	//calculate movement constraints based on range data
 	Vector2f new_setpoint = original_setpoint;
-	_calculateConstrainedSetpoint(new_setpoint, curr_pos, curr_vel);
+
+	if(!cp_mode){
+		_calculateConstrainedSetpoint(new_setpoint, curr_pos, curr_vel);
+		float sp_zd = setpointz;
+		_ConstrainSetpoint_ZDown(setpointz,sp_zd);
+		float sp_zu = setpointz;
+		_ConstrainSetpoint_ZUp(setpointz,sp_zu);
+	}
+
+	else{
+		applyAvoidance(new_setpoint);
+	}
 
 	//warn user if collision prevention starts to interfere
 	bool currently_interfering = (new_setpoint(0) < original_setpoint(0) - 0.05f * max_speed
@@ -686,6 +778,7 @@ CollisionPrevention::modifySetpoint(Vector2f &original_setpoint, const float max
 	_constraints_pub.publish(constraints);
 
 	original_setpoint = new_setpoint;
+	
 }
 
 void CollisionPrevention::_publishVehicleCmdDoLoiter()
@@ -707,3 +800,228 @@ void CollisionPrevention::_publishVehicleCmdDoLoiter()
 	// publish the vehicle command
 	_vehicle_command_pub.publish(command);
 }
+
+void CollisionPrevention::applyAvoidance(Vector2f &setpoint)
+{
+	const bool ooa_mode = _param_cp_mode.get();
+	const float DECEL_DIS = _param_cp_decel_dis.get();
+	const float BP_DIS = _param_cp_bypass_dis.get();
+	//更新障碍物距离数据
+    _updateObstacleMap();
+	//初始速度设定值
+    _original_setpoint = setpoint;
+
+	//获取目标范围内(+-24 degree)最小障碍物距离
+    float min_dist = _getMinimumForwardDistance(setpoint);
+
+    // 状态切换逻辑
+    switch (bp_state_) {
+		//纯摇杆映射
+        case MANUAL:
+			//障碍物距离未触发绕行 到达减速阈值 切换到减速状态
+            if (min_dist < DECEL_DIS && min_dist >= BP_DIS) {
+                bp_state_ = SLOWING_DOWN;
+			//可能是移动yaw 障碍物距离到达绕行阈值 切换到绕行状态
+            } else if (min_dist < BP_DIS) {
+                bp_state_ = AVOIDING;
+            }
+            break;
+
+        case SLOWING_DOWN:
+			//判读为安全 切换回摇杆映射模式
+            if (min_dist >= DECEL_DIS) {
+                bp_state_ = MANUAL;
+			//减速后达到绕行阈值后切换到绕行状态
+            } else if (min_dist < BP_DIS) {
+                bp_state_ = AVOIDING;
+            }
+            break;
+
+        case AVOIDING:
+			//绕行完成 切换到恢复状态
+            if (min_dist >= BP_DIS) {
+                bp_state_ = RECOVERING;
+                _recovery_start = hrt_absolute_time();
+            }
+            break;
+
+        case RECOVERING:
+			//恢复完成 切换回摇杆映射模式
+		    if (min_dist >= DECEL_DIS){
+				if (hrt_elapsed_time(&_recovery_start) > RECOVERY_TIME * 1e6) {
+					bp_state_ = MANUAL;
+				}
+			}
+			//若突然又识别到障碍物 切换到绕行状态
+			else
+				bp_state_ = AVOIDING;
+            break;
+    }
+
+    // 输出控制逻辑
+    switch (bp_state_) {
+        case MANUAL:
+            // 原样输出
+            break;
+
+        case SLOWING_DOWN:
+			//减速平滑输出
+            setpoint = _calculateSlowdownCommand(_original_setpoint, min_dist);
+            break;
+
+        case AVOIDING:
+			//绕行输出 保存最后一次绕行命令 以备恢复使用
+            setpoint = _calculateAvoidanceCommand();
+            _last_avoidance_cmd = setpoint;
+            break;
+
+        case RECOVERING:
+			//恢复输出 混合绕行命令和原命令 以平滑过渡
+            float t = hrt_elapsed_time(&_recovery_start) / (RECOVERY_TIME * 1e6);
+            setpoint = _blendCommands(_original_setpoint, _last_avoidance_cmd, 1.0f - t);
+            break;
+    }
+
+	//调试使用
+	static orb_advert_t dbg_vect_pub = nullptr;
+	struct debug_vect_s dbg_vect{};
+	strncpy(dbg_vect.name, "bp_state_", sizeof(dbg_vect.name));
+	dbg_vect.timestamp = hrt_absolute_time();
+	dbg_vect.x = bp_state_;
+	dbg_vect.y = min_dist;
+	dbg_vect.z = ooa_mode;
+
+	if (dbg_vect_pub == nullptr) {
+		dbg_vect_pub = orb_advertise(ORB_ID(debug_vect), &dbg_vect);
+	} else {
+		orb_publish(ORB_ID(debug_vect), dbg_vect_pub, &dbg_vect);
+	}
+}
+
+Vector2f CollisionPrevention::_blendCommands(const Vector2f& user_cmd, const Vector2f& avoid_cmd, float ratio) {
+    // 使用三次贝塞尔曲线平滑过渡
+    float t = ratio * ratio * (3.0f - 2.0f * ratio);
+    return user_cmd * (1.0f - t) + avoid_cmd * t;
+}
+
+
+Vector2f CollisionPrevention::_calculateSlowdownCommand(const Vector2f& original_cmd, float min_dist) {
+	//最小ratio 保证靠近障碍物时低速运行 但不停止
+    const float MIN_SPEED_RATIO = 0.3f;
+	const float DECEL_DIS = _param_cp_decel_dis.get();
+	const float BP_DIS = _param_cp_bypass_dis.get();
+
+    float ratio = (min_dist - BP_DIS) / (DECEL_DIS - BP_DIS);
+    ratio = math::constrain(ratio, MIN_SPEED_RATIO, 1.0f);
+
+    return original_cmd * ratio;
+}
+
+float CollisionPrevention::_getMinimumForwardDistance(const Vector2f& setpoint) {
+    const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
+    const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
+    const float rad_threshold = math::radians(24.0f);
+    const float setpoint_length = setpoint.norm();
+
+	//xy平面未打杆时 不检测
+    if (setpoint_length < 0.01f) return INFINITY;
+
+    Vector2f setpoint_dir = setpoint / setpoint_length;
+    const float sp_rad_local = wrap_2pi(atan2f(setpoint_dir(1), setpoint_dir(0)));
+
+    float min_dist = INFINITY;
+
+    for (int i = 0; i < INTERNAL_MAP_USED_BINS; i++) {
+        float raw_dist = _obstacle_map_body_frame.distances[i];
+        if (raw_dist <= _obstacle_map_body_frame.min_distance || raw_dist >= UINT16_MAX) continue;
+
+        float angle = math::radians((float)i * INTERNAL_MAP_INCREMENT_DEG + _obstacle_map_body_frame.angle_offset);
+        angle = wrap_2pi(vehicle_yaw_angle_rad + angle);
+        float rad_diff = wrap_pi(angle - sp_rad_local);
+
+		//跳过偏离目标方向太多角度的扇区
+        if (fabsf(rad_diff) > rad_threshold) continue;
+
+        float dist_m = raw_dist * 0.01f;
+        if (dist_m < min_dist) min_dist = dist_m;
+    }
+
+    return min_dist;
+}
+
+Vector2f CollisionPrevention::_calculateAvoidanceCommand() {
+
+	//const float DECEL_DIS = _param_cp_decel_dis.get();
+	const float BP_DIS = _param_cp_bypass_dis.get();
+	const float MAX_AVOID_SPEED = _param_cp_bypass_vel.get();
+    Vector2f best_direction(0, 0);
+    float max_safety = -INFINITY;
+	const float sp_rad_local = wrap_2pi((atan2f(_original_setpoint(1), _original_setpoint(0))));
+	const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
+    const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
+	//计算距离评分时考虑临近扇区 避免绕行时过于贴近障碍物
+	const int NEIGHBOR_BINS = 3;
+	const float ALIGNMENT_GAIN = 0.6f;
+	const float DISTANCE_GAIN = 0.4f;
+	const float SAFE_DISTANCE = _obstacle_map_body_frame.max_distance * 0.01f;
+
+    // 遍历所有扇区寻找最安全方向
+	for (int i = 0; i < INTERNAL_MAP_USED_BINS; i++) {
+
+		if (_obstacle_map_body_frame.distances[i] <= _obstacle_map_body_frame.min_distance || _obstacle_map_body_frame.distances[i] >= UINT16_MAX)
+			continue;
+		//当前循环中的扇区的对应弧度
+
+		float angle = math::radians((float)i * INTERNAL_MAP_INCREMENT_DEG + _obstacle_map_body_frame.angle_offset);
+
+		// convert from body to local frame in the range [0, 2*pi]
+		//机体系下弧度 + 当前yaw角 转换为世界系下弧度
+		angle = wrap_2pi(vehicle_yaw_angle_rad + angle);
+		float rad_diff = wrap_pi(angle - sp_rad_local);
+
+		//不考虑往目标方向的反方向绕行
+		if (fabsf(rad_diff) > math::radians(90.0f))
+			continue;
+
+		float total_dist = 0.f;
+
+		// 计算临近扇区的平均距离
+		for(int j = -NEIGHBOR_BINS; j <= NEIGHBOR_BINS; ++j){
+			int index = (i + j + INTERNAL_MAP_USED_BINS) % INTERNAL_MAP_USED_BINS;
+
+			float dist = _obstacle_map_body_frame.distances[index] * 0.01f;
+			if(dist > BP_DIS){
+				total_dist += dist;
+			}
+			//如果有障碍物距离小于BP_DIS 则跳出循环 保证安全
+			else{
+				total_dist = -INFINITY;
+				break;
+			}
+		}
+
+		// 安全评分 = 距离评分 + 方向对齐评分
+		float distance_score = total_dist / (2 * NEIGHBOR_BINS + 1) / SAFE_DISTANCE; //[0,1]
+		float alignment_score = 0.5f*(cosf(rad_diff) + 1.0f); // [0,1]
+		
+		float total_score = DISTANCE_GAIN * distance_score + ALIGNMENT_GAIN * alignment_score;
+
+		if(total_score > max_safety){
+			max_safety = total_score;
+			best_direction = Vector2f(cosf(angle),sinf(angle));
+		}
+		
+	}
+
+	//todo all obs
+
+
+	// 引入平滑过渡逻辑
+    float smooth_gain = fminf(max_safety, 1.0f);
+	float current_speed = _original_setpoint.norm();
+	float target_speed = MAX_AVOID_SPEED * smooth_gain;
+	//根据当前速度和目标速度之间的差值进行平滑过渡
+	float speed_transition = math::constrain((target_speed - current_speed) / 2.0f, 0.0f, 1.0f);
+	return best_direction * (current_speed + speed_transition * (target_speed - current_speed));
+}
+

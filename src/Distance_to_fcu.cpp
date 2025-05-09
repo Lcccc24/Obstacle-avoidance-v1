@@ -16,7 +16,7 @@ void Distance_to_fcu::generateNewHistogram(Histogram& polar_histogram, const pcl
   Eigen::MatrixXi counter(GRID_LENGTH_E, GRID_LENGTH_Z);
   counter.fill(0);
 
-  for (auto xyz : cropped_cloud) {
+  for (auto xyz : cropped_cloud) { 
     Eigen::Vector3f p = toEigen(xyz);
     //std::cout << "p" << ","<< p << std::endl;
     PolarPoint p_pol = cartesianToPolarHistogram(p, position);
@@ -150,9 +150,9 @@ void Distance_to_fcu::updateObstacleDistanceMsg(Histogram hist) {
  */
 void Distance_to_fcu::compressHistogramElevation(Histogram& new_hist, const Histogram& input_hist, const Eigen::Vector3f& position) {
   //need change
-  float vertical_FOV_range_sensor = 30.0;
+  float vertical_FOV_range_sensor = 18.0;
   //need change
-  float vertical_cap = 1.5f;  // ignore obstacles, which are more than that above or below the drone.
+  float vertical_cap = 0.75f;  // ignore obstacles, which are more than that above or below the drone.
   PolarPoint p_pol_lower(-1.0f * vertical_FOV_range_sensor / 2.0f, 0.0f, 0.0f);
   PolarPoint p_pol_upper(vertical_FOV_range_sensor / 2.0f, 0.0f, 0.0f);
   Eigen::Vector2i p_ind_lower = polarToHistogramIndex(p_pol_lower, ALPHA_RES);

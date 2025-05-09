@@ -92,16 +92,12 @@ void FlightTaskManualPosition::_scaleSticks()
 	Vector2f vel_sp_xy = stick_xy * velocity_scale;
 
 	// Rotate setpoint into local frame
+	//此处将机体系摇杆量转换为世界系下速度设定值
 	Sticks::rotateIntoHeadingFrameXY(vel_sp_xy, _yaw, _yaw_setpoint);
 
 	// collision prevention
 	if (_collision_prevention.is_active()) {
-		_collision_prevention.modifySetpoint(vel_sp_xy, velocity_scale, _position.xy(), _velocity.xy());
-		//lc add
-		float temp_down = _velocity_setpoint(2);
-		_collision_prevention._ConstrainSetpoint_ZDown(_velocity_setpoint(2),temp_down);
-		float temp_up = _velocity_setpoint(2);
-		_collision_prevention._ConstrainSetpoint_ZUp(_velocity_setpoint(2),temp_up);
+		_collision_prevention.modifySetpoint(vel_sp_xy, velocity_scale, _position.xy(), _velocity.xy(), _velocity_setpoint(2));
 	}
 	_velocity_setpoint.xy() = vel_sp_xy;
 }

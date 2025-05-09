@@ -80,12 +80,13 @@ public:
 	 * @param curr_vel, current vehicle velocity
 	 */
 	void modifySetpoint(matrix::Vector2f &original_setpoint, const float max_speed,
-			    const matrix::Vector2f &curr_pos, const matrix::Vector2f &curr_vel);
+			    const matrix::Vector2f &curr_pos, const matrix::Vector2f &curr_vel, float &z_setpoint);
 
 	//lc add
 	void _ConstrainSetpoint_ZDown(float &z_setpoint, float stick);
 	void _ConstrainSetpoint_ZUp(float &z_setpoint, float stick);
 
+	
 protected:
 
 	obstacle_distance_s _obstacle_map_body_frame {};
@@ -152,7 +153,18 @@ private:
 		(ParamBool<px4::params::CP_GO_NO_DATA>) _param_cp_go_nodata, /**< movement allowed where no data*/
 		(ParamFloat<px4::params::MPC_XY_P>) _param_mpc_xy_p, /**< p gain from position controller*/
 		(ParamFloat<px4::params::MPC_JERK_MAX>) _param_mpc_jerk_max, /**< vehicle maximum jerk*/
-		(ParamFloat<px4::params::MPC_ACC_HOR>) _param_mpc_acc_hor /**< vehicle maximum horizontal acceleration*/
+		(ParamFloat<px4::params::MPC_ACC_HOR>) _param_mpc_acc_hor, /**< vehicle maximum horizontal acceleration*/
+		(ParamBool<px4::params::CP_MODE>) _param_cp_mode, /**< collision prevention mode */
+		(ParamFloat<px4::params::CP_DOWN_GATE1>) _param_cp_down_gate1, /**< Brake Mode */
+		(ParamFloat<px4::params::CP_DOWN_GATE2>) _param_cp_down_gate2, /**< Brake Mode */
+		(ParamFloat<px4::params::CP_DOWN_DECAY>) _param_cp_down_decay, /**< Brake Mode */
+		(ParamFloat<px4::params::CP_UP_GATE1>) _param_cp_up_gate1, /**< Brake Mode */
+		(ParamFloat<px4::params::CP_UP_GATE2>) _param_cp_up_gate2, /**< Brake Mode */
+		(ParamFloat<px4::params::CP_UP_DECAY>) _param_cp_up_decay, /**< Brake Mode */
+		(ParamFloat<px4::params::CP_DECEL_DIS>) _param_cp_decel_dis, /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_BYPASS_DIS>) _param_cp_bypass_dis, /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_BYPASS_VEL>) _param_cp_bypass_vel /**< Bypass Mode */
+		
 	)
 
 	/**
@@ -193,5 +205,35 @@ private:
 	 * Publishes vehicle command.
 	 */
 	void _publishVehicleCmdDoLoiter();
+
+	//lc add 
+	//BYPASS MODE
+	enum BP_State{
+		MANUAL,
+		SLOWING_DOWN,
+		AVOIDING,
+		RECOVERING,
+	};
+
+	BP_State bp_state_ = MANUAL;
+	matrix::Vector2f _original_setpoint;     // 保存的用户原始指令
+    hrt_abstime _recovery_start;     // 恢复阶段开始时间
+    matrix::Vector2f _last_avoidance_cmd;    // 上一次避障指令
+
+
+
+    // 参数配置
+    static constexpr double RECOVERY_TIME = 2.0f;     // 恢复时间 (s)
+    // static constexpr float MAX_AVOID_SPEED = 1.0f;   // 最大避障速度 (m/s)
+	// static constexpr float DECEL_DIS = 4.0f;    // 减速距离 (cm)
+	// static constexpr float BP_DIS = 2.8f;    // 绕行距离 (cm)
+    
+    // 避障核心逻辑
+	void applyAvoidance(matrix::Vector2f &setpoint);
+    matrix::Vector2f _calculateAvoidanceCommand();
+    //bool _checkCollisionRisk(matrix::Vector2f& setpoint);
+	float _getMinimumForwardDistance(const matrix::Vector2f& setpoint);
+	matrix::Vector2f _calculateSlowdownCommand(const matrix::Vector2f& original_cmd, float min_dist);
+    matrix::Vector2f _blendCommands(const matrix::Vector2f& user_cmd, const matrix::Vector2f& avoid_cmd, float ratio);
 
 };
