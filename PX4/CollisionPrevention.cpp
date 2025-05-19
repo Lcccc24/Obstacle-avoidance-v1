@@ -954,15 +954,15 @@ Vector2f CollisionPrevention::_calculateAvoidanceCommand() {
 	//const float DECEL_DIS = _param_cp_decel_dis.get();
 	const float BP_DIS = _param_cp_bypass_dis.get();
 	const float MAX_AVOID_SPEED = _param_cp_bypass_vel.get();
+	//计算距离评分时考虑临近扇区 避免绕行时过于贴近障碍物
+	const int NEIGHBOR_BINS = _param_cp_nei_bins.get();
+	const float ALIGNMENT_GAIN = _param_cp_align_gain.get();
+	const float DISTANCE_GAIN = _param_cp_dis_gain.get();
     Vector2f best_direction(0, 0);
     float max_safety = -INFINITY;
 	const float sp_rad_local = wrap_2pi((atan2f(_original_setpoint(1), _original_setpoint(0))));
 	const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
     const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
-	//计算距离评分时考虑临近扇区 避免绕行时过于贴近障碍物
-	const int NEIGHBOR_BINS = 3;
-	const float ALIGNMENT_GAIN = 0.6f;
-	const float DISTANCE_GAIN = 0.4f;
 	const float SAFE_DISTANCE = _obstacle_map_body_frame.max_distance * 0.01f;
 
     // 遍历所有扇区寻找最安全方向

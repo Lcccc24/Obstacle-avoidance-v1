@@ -163,8 +163,10 @@ private:
 		(ParamFloat<px4::params::CP_UP_DECAY>) _param_cp_up_decay, /**< Brake Mode */
 		(ParamFloat<px4::params::CP_DECEL_DIS>) _param_cp_decel_dis, /**< Bypass Mode */
 		(ParamFloat<px4::params::CP_BYPASS_DIS>) _param_cp_bypass_dis, /**< Bypass Mode */
-		(ParamFloat<px4::params::CP_BYPASS_VEL>) _param_cp_bypass_vel /**< Bypass Mode */
-		
+		(ParamFloat<px4::params::CP_BYPASS_VEL>) _param_cp_bypass_vel, /**< Bypass Mode */
+		(ParamInt<px4::params::CP_NEI_BINS>) _param_cp_nei_bins, /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_ALIGN_GAIN>) _param_cp_align_gain, /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_DIS_GAIN>) _param_cp_dis_gain /**< Bypass Mode */
 	)
 
 	/**
