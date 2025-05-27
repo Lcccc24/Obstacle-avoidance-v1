@@ -1,0 +1,41 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/lc/avoid_ws/devel/include/**",
+        "/home/lc/airsim_ws/devel/include/**",
+        "/home/lc/mp_ws/devel/include/**",
+        "/home/lc/mc_simu_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/apriltag_ros/apriltag_ros/include/**",
+        "/home/lc/avoid_ws/src/PX4-Avoidance/avoidance/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/image_pipeline/depth_image_proc/include/**",
+        "/home/lc/avoidance_ws/src/dis2fcu/include/**",
+        "/home/lc/avoid_ws/src/PX4-Avoidance/global_planner/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/image_pipeline/image_proc/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/onboard_uav/src/landing_pose/include/**",
+        "/home/lc/avoid_ws/src/PX4-Avoidance/local_planner/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/onboard_uav/src/planner/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/onboard_uav/src/odom_vis/pose_utils/include/**",
+        "/home/lc/avoid_ws/src/PX4-Avoidance/safe_landing_planner/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/image_pipeline/stereo_image_proc/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/onboard_uav/src/traj_opt/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/uav_launch/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/uav_utils/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/onboard_uav/src/vis_utils/include/**",
+        "/home/lc/mc_simu_ws/src/onboard_uav/src/vision_pose/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

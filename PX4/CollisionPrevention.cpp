@@ -759,7 +759,7 @@ CollisionPrevention::modifySetpoint(Vector2f &original_setpoint, const float max
 	}
 
 	else{
-		applyAvoidance(new_setpoint);
+		applyAvoidance(new_setpoint,setpointz);
 	}
 
 	//warn user if collision prevention starts to interfere
@@ -801,60 +801,142 @@ void CollisionPrevention::_publishVehicleCmdDoLoiter()
 	_vehicle_command_pub.publish(command);
 }
 
-void CollisionPrevention::applyAvoidance(Vector2f &setpoint)
+void CollisionPrevention::applyAvoidance(Vector2f &setpoint_xy, float &setpointz)
 {
-	const bool ooa_mode = _param_cp_mode.get();
+	//const bool ooa_mode = _param_cp_mode.get();
 	const float DECEL_DIS = _param_cp_decel_dis.get();
 	const float BP_DIS = _param_cp_bypass_dis.get();
+	//const float VER_GATE = _param_cp_ver_gate.get();
+	//const float HOR_DENSE = _param_cp_hor_dense.get();
+	//水平拖动向上下避障
+	//bool vertical_bypass = false;
+
+	//用户未打杆时 不检测
+    if (setpoint_xy.norm() < 0.01f && fabs(setpointz) < 0.01f) 
+		return;
+
 	//更新障碍物距离数据
     _updateObstacleMap();
-	//初始速度设定值
-    _original_setpoint = setpoint;
 
+	if(setpoint_xy.norm() > 0.05f){
+		BP_XY = true;
+		//初始速度设定值
+		_original_setpoint_xy = setpoint_xy;
+	}
+	else{
+		BP_XY = false;
+	}
+
+	if(setpointz < -0.1f){
+		//初始速度设定值
+		_original_setpoint_z = setpointz;
+		BP_ZUP = true;
+	}
+	else if(setpointz > 0.1f){
+		//下方障碍物 不绕行 参考刹停时处理逻辑
+		BP_ZUP = false;	
+		//初始速度设定值
+		_original_setpoint_z = setpointz;
+		_ConstrainSetpoint_ZDown(setpointz,_original_setpoint_z);
+	}
+	else{
+		BP_ZUP = false;
+	}
+
+	//获取垂直方向 上 的最小障碍物距离
+	float min_verup_dist = _getMinimumVerticalDistance();
+    Vector2f dist = _getMinimumForwardDistance(setpoint_xy);
 	//获取目标范围内(+-24 degree)最小障碍物距离
-    float min_dist = _getMinimumForwardDistance(setpoint);
+	float min_hor_dist = dist(0);
+	//水平全向平均距离
+	//float hor_aver_dist = dist(1);
+
+	// if(min_verup_dist < 1.0f || min_hor_dist < 1.0f){
+	// 	setpointz = 0.0f;
+	// 	setpoint_xy = Vector2f(0.0f, 0.0f);
+	// 	return;
+	// }
 
     // 状态切换逻辑
     switch (bp_state_) {
 		//纯摇杆映射
         case MANUAL:
-			//障碍物距离未触发绕行 到达减速阈值 切换到减速状态
-            if (min_dist < DECEL_DIS && min_dist >= BP_DIS) {
-                bp_state_ = SLOWING_DOWN;
-			//可能是移动yaw 障碍物距离到达绕行阈值 切换到绕行状态
-            } else if (min_dist < BP_DIS) {
-                bp_state_ = AVOIDING;
-            }
+			if(BP_XY == true){
+				//障碍物距离未触发绕行 到达减速阈值 切换到减速状态
+				if (min_hor_dist < DECEL_DIS && min_hor_dist >= BP_DIS) {
+					bp_state_ = SLOWING_DOWN;
+				//可能是移动yaw 障碍物距离到达绕行阈值 切换到绕行状态
+				} else if (min_hor_dist < BP_DIS) {
+					bp_state_ = AVOIDING;
+				}
+			}
+
+			if(BP_ZUP == true){
+				//障碍物距离未触发绕行 到达减速阈值 切换到减速状态
+				if (min_verup_dist < DECEL_DIS && min_verup_dist >= BP_DIS) {
+					bp_state_ = SLOWING_DOWN;
+				} else if (min_verup_dist < BP_DIS) {
+					bp_state_ = AVOIDING;
+				}
+			}
             break;
 
         case SLOWING_DOWN:
-			//判读为安全 切换回摇杆映射模式
-            if (min_dist >= DECEL_DIS) {
-                bp_state_ = MANUAL;
-			//减速后达到绕行阈值后切换到绕行状态
-            } else if (min_dist < BP_DIS) {
-                bp_state_ = AVOIDING;
-            }
+			if(BP_XY == true){
+				//判读为安全 切换回摇杆映射模式
+				if (min_hor_dist >= DECEL_DIS) {
+					bp_state_ = MANUAL;
+				//减速后达到绕行阈值后切换到绕行状态
+				} else if (min_hor_dist < BP_DIS) {
+					bp_state_ = AVOIDING;
+				}
+			}
+
+			if(BP_ZUP == true){
+				//判读为安全 切换回摇杆映射模式
+				if (min_verup_dist >= DECEL_DIS) {
+					bp_state_ = MANUAL;
+				} else if (min_verup_dist < BP_DIS) {
+					bp_state_ = AVOIDING;
+				}
+			}
             break;
 
         case AVOIDING:
+			if(BP_XY == true){
 			//绕行完成 切换到恢复状态
-            if (min_dist >= BP_DIS) {
-                bp_state_ = RECOVERING;
-                _recovery_start = hrt_absolute_time();
-            }
-            break;
+				if (min_hor_dist >= BP_DIS && !BP_ZUP) {
+					bp_state_ = RECOVERING;
+					_recovery_start_xy = hrt_absolute_time();
+				}
+			}
 
-        case RECOVERING:
-			//恢复完成 切换回摇杆映射模式
-		    if (min_dist >= DECEL_DIS){
-				if (hrt_elapsed_time(&_recovery_start) > RECOVERY_TIME * 1e6) {
+
+			if(BP_ZUP == true){
+				if (min_verup_dist >= DECEL_DIS) {
 					bp_state_ = MANUAL;
 				}
 			}
-			//若突然又识别到障碍物 切换到绕行状态
-			else
-				bp_state_ = AVOIDING;
+
+            break;
+
+        case RECOVERING:
+			if(BP_XY == true){
+			//恢复完成 切换回摇杆映射模式
+				if (min_hor_dist >= DECEL_DIS){
+					if (hrt_elapsed_time(&_recovery_start_xy) > RECOVERY_TIME * 1e6) {
+						bp_state_ = MANUAL;
+					}
+				}
+				//若突然又识别到障碍物 切换到绕行状态
+				else
+					bp_state_ = AVOIDING;
+			}
+
+			if(BP_ZUP == true){
+				if(min_verup_dist < DECEL_DIS)
+					bp_state_ = AVOIDING;
+			}
             break;
     }
 
@@ -865,20 +947,32 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint)
             break;
 
         case SLOWING_DOWN:
+			if(BP_XY == true){
 			//减速平滑输出
-            setpoint = _calculateSlowdownCommand(_original_setpoint, min_dist);
+            	setpoint_xy = calculateSlowdown(_original_setpoint_xy, min_hor_dist);
+			}
+			if(BP_ZUP == true){
+				setpointz = calculateSlowdown(_original_setpoint_z, min_verup_dist);
+			}
             break;
 
         case AVOIDING:
-			//绕行输出 保存最后一次绕行命令 以备恢复使用
-            setpoint = _calculateAvoidanceCommand();
-            _last_avoidance_cmd = setpoint;
+			if(BP_XY == true){
+				//绕行输出 保存最后一次绕行命令 以备恢复使用
+				setpoint_xy = _calculateAvoidanceCommand(true);
+				_last_avoidance_cmd = setpoint_xy;
+			}
+			if(BP_ZUP == true){
+				setpointz = -0.0f;
+				setpoint_xy = _calculateAvoidanceCommand(false);
+			}
+
             break;
 
         case RECOVERING:
 			//恢复输出 混合绕行命令和原命令 以平滑过渡
-            float t = hrt_elapsed_time(&_recovery_start) / (RECOVERY_TIME * 1e6);
-            setpoint = _blendCommands(_original_setpoint, _last_avoidance_cmd, 1.0f - t);
+            float t = hrt_elapsed_time(&_recovery_start_xy) / (RECOVERY_TIME * 1e6);
+            setpoint_xy = _blendCommands(_original_setpoint_xy, _last_avoidance_cmd, 1.0f - t);
             break;
     }
 
@@ -888,8 +982,8 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint)
 	strncpy(dbg_vect.name, "bp_state_", sizeof(dbg_vect.name));
 	dbg_vect.timestamp = hrt_absolute_time();
 	dbg_vect.x = bp_state_;
-	dbg_vect.y = min_dist;
-	dbg_vect.z = ooa_mode;
+	dbg_vect.y = min_hor_dist;
+	dbg_vect.z = BP_ZUP;
 
 	if (dbg_vect_pub == nullptr) {
 		dbg_vect_pub = orb_advertise(ORB_ID(debug_vect), &dbg_vect);
@@ -905,26 +999,34 @@ Vector2f CollisionPrevention::_blendCommands(const Vector2f& user_cmd, const Vec
 }
 
 
-Vector2f CollisionPrevention::_calculateSlowdownCommand(const Vector2f& original_cmd, float min_dist) {
-	//最小ratio 保证靠近障碍物时低速运行 但不停止
-    const float MIN_SPEED_RATIO = 0.3f;
+
+template<typename T>
+T CollisionPrevention::calculateSlowdown(const T &original, float min_dist) const {
+	const float MIN_RATIO = 0.3f;
 	const float DECEL_DIS = _param_cp_decel_dis.get();
-	const float BP_DIS = _param_cp_bypass_dis.get();
-
-    float ratio = (min_dist - BP_DIS) / (DECEL_DIS - BP_DIS);
-    ratio = math::constrain(ratio, MIN_SPEED_RATIO, 1.0f);
-
-    return original_cmd * ratio;
+    const float BP_DIS = _param_cp_bypass_dis.get();
+	float ratio = math::constrain(
+		(min_dist - BP_DIS) / (DECEL_DIS - BP_DIS),
+		MIN_RATIO, 1.0f
+	);
+	return original * ratio;
 }
 
-float CollisionPrevention::_getMinimumForwardDistance(const Vector2f& setpoint) {
+
+Vector2f CollisionPrevention::_getMinimumForwardDistance(const Vector2f& setpoint) {
     const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
     const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
-    const float rad_threshold = math::radians(24.0f);
+	//前进方向检测
+    const float forward_threshold = math::radians(24.0f);
+	//上下绕飞时全向检测
+	const float around_threshold = math::radians(180.0f);
     const float setpoint_length = setpoint.norm();
+	//计算水平方向障碍物密度
+	float aver_dist = 0.f;
+	int use_bins = 0;
 
 	//xy平面未打杆时 不检测
-    if (setpoint_length < 0.01f) return INFINITY;
+    //if (setpoint_length < 0.01f) return Vector2f{INFINITY, INFINITY};
 
     Vector2f setpoint_dir = setpoint / setpoint_length;
     const float sp_rad_local = wrap_2pi(atan2f(setpoint_dir(1), setpoint_dir(0)));
@@ -939,18 +1041,44 @@ float CollisionPrevention::_getMinimumForwardDistance(const Vector2f& setpoint) 
         angle = wrap_2pi(vehicle_yaw_angle_rad + angle);
         float rad_diff = wrap_pi(angle - sp_rad_local);
 
+		//障碍物密度计算只评估指定运动方向的前180度
+		if (fabsf(rad_diff) > around_threshold) continue;
+		aver_dist += raw_dist * 0.01f;
+		use_bins++;
+
 		//跳过偏离目标方向太多角度的扇区
-        if (fabsf(rad_diff) > rad_threshold) continue;
+		//计算运动方向上最短距离，不需要遍历过多
+        if (fabsf(rad_diff) > forward_threshold) continue;
 
         float dist_m = raw_dist * 0.01f;
         if (dist_m < min_dist) min_dist = dist_m;
     }
 
-    return min_dist;
+	aver_dist /= use_bins;
+    return Vector2f(min_dist, aver_dist);
 }
 
-Vector2f CollisionPrevention::_calculateAvoidanceCommand() {
+float CollisionPrevention::_getMinimumVerticalDistance(){
 
+	float min_up_dist = INFINITY;
+	//float min_down_dist = INFINITY;
+
+	// 遍历指定区域寻找最小障碍物距离 down
+	// for(int i = INTERNAL_MAP_USED_BINS; i < INTERNAL_MAP_USED_BINS + (INTERNAL_MAP_UPDOWN_BLOCK / 2); ++i){
+	// 	if(_obstacle_map_body_frame.distances[i] * 0.01f < min_down_dist)
+	// 	min_down_dist = _obstacle_map_body_frame.distances[i] * 0.01f;
+	// }
+	// 遍历指定区域寻找最小障碍物距离 up
+	for(int i = INTERNAL_MAP_USED_BINS + (INTERNAL_MAP_UPDOWN_BLOCK / 2); i < INTERNAL_MAP_USED_BINS + INTERNAL_MAP_UPDOWN_BLOCK; ++i){
+		if(_obstacle_map_body_frame.distances[i] * 0.01f < min_up_dist)
+		min_up_dist = _obstacle_map_body_frame.distances[i] * 0.01f;
+	}
+
+	return min_up_dist;
+}
+
+
+Vector2f CollisionPrevention::_calculateAvoidanceCommand(bool xyorz) {
 	//const float DECEL_DIS = _param_cp_decel_dis.get();
 	const float BP_DIS = _param_cp_bypass_dis.get();
 	const float MAX_AVOID_SPEED = _param_cp_bypass_vel.get();
@@ -960,10 +1088,16 @@ Vector2f CollisionPrevention::_calculateAvoidanceCommand() {
 	const float DISTANCE_GAIN = _param_cp_dis_gain.get();
     Vector2f best_direction(0, 0);
     float max_safety = -INFINITY;
-	const float sp_rad_local = wrap_2pi((atan2f(_original_setpoint(1), _original_setpoint(0))));
 	const matrix::Quatf attitude = Quatf(_sub_vehicle_attitude.get().q);
     const float vehicle_yaw_angle_rad = Eulerf(attitude).psi();
 	const float SAFE_DISTANCE = _obstacle_map_body_frame.max_distance * 0.01f;
+
+	const float sp_rad_local = xyorz ?
+		wrap_2pi(atan2f(_original_setpoint_xy(1), _original_setpoint_xy(0))) :
+		math::radians(90.0f);
+
+	const float angle_limit_sp = xyorz ? 90.0f : 180.0f;
+
 
     // 遍历所有扇区寻找最安全方向
 	for (int i = 0; i < INTERNAL_MAP_USED_BINS; i++) {
@@ -979,9 +1113,10 @@ Vector2f CollisionPrevention::_calculateAvoidanceCommand() {
 		angle = wrap_2pi(vehicle_yaw_angle_rad + angle);
 		float rad_diff = wrap_pi(angle - sp_rad_local);
 
-		//不考虑往目标方向的反方向绕行
-		if (fabsf(rad_diff) > math::radians(90.0f))
+		//不考虑往目标方向的反方向绕行  此情况全向均需要考虑
+		if (fabsf(rad_diff) > math::radians(angle_limit_sp))
 			continue;
+
 
 		float total_dist = 0.f;
 
@@ -1013,15 +1148,6 @@ Vector2f CollisionPrevention::_calculateAvoidanceCommand() {
 		
 	}
 
-	//todo all obs
+	return best_direction * MAX_AVOID_SPEED;
 
-
-	// 引入平滑过渡逻辑
-    float smooth_gain = fminf(max_safety, 1.0f);
-	float current_speed = _original_setpoint.norm();
-	float target_speed = MAX_AVOID_SPEED * smooth_gain;
-	//根据当前速度和目标速度之间的差值进行平滑过渡
-	float speed_transition = math::constrain((target_speed - current_speed) / 2.0f, 0.0f, 1.0f);
-	return best_direction * (current_speed + speed_transition * (target_speed - current_speed));
 }
-

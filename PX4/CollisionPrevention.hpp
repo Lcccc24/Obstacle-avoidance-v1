@@ -166,7 +166,9 @@ private:
 		(ParamFloat<px4::params::CP_BYPASS_VEL>) _param_cp_bypass_vel, /**< Bypass Mode */
 		(ParamInt<px4::params::CP_NEI_BINS>) _param_cp_nei_bins, /**< Bypass Mode */
 		(ParamFloat<px4::params::CP_ALIGN_GAIN>) _param_cp_align_gain, /**< Bypass Mode */
-		(ParamFloat<px4::params::CP_DIS_GAIN>) _param_cp_dis_gain /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_DIS_GAIN>) _param_cp_dis_gain, /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_HOR_DENSE>) _param_cp_hor_dense, /**< Bypass Mode */
+		(ParamFloat<px4::params::CP_VER_GATE>) _param_cp_ver_gate /**< Bypass Mode */
 	)
 
 	/**
@@ -217,25 +219,24 @@ private:
 		RECOVERING,
 	};
 
-	BP_State bp_state_ = MANUAL;
-	matrix::Vector2f _original_setpoint;     // 保存的用户原始指令
-    hrt_abstime _recovery_start;     // 恢复阶段开始时间
-    matrix::Vector2f _last_avoidance_cmd;    // 上一次避障指令
-
-
-
     // 参数配置
-    static constexpr double RECOVERY_TIME = 2.0f;     // 恢复时间 (s)
-    // static constexpr float MAX_AVOID_SPEED = 1.0f;   // 最大避障速度 (m/s)
-	// static constexpr float DECEL_DIS = 4.0f;    // 减速距离 (cm)
-	// static constexpr float BP_DIS = 2.8f;    // 绕行距离 (cm)
+	BP_State bp_state_ = MANUAL;
+	matrix::Vector2f _original_setpoint_xy;     // 保存的用户原始指令
+	float _original_setpoint_z;     // 保存的用户原始指令
+    hrt_abstime _recovery_start_xy;     // 恢复阶段开始时间
+    matrix::Vector2f _last_avoidance_cmd;    // 上一次避障指令
+    static constexpr double RECOVERY_TIME = 1.0f;     // 恢复时间 (s)
+	bool BP_XY = false;
+	bool BP_ZUP = false;
     
     // 避障核心逻辑
-	void applyAvoidance(matrix::Vector2f &setpoint);
-    matrix::Vector2f _calculateAvoidanceCommand();
+	void applyAvoidance(matrix::Vector2f &setpoint, float &setpointz);
+    matrix::Vector2f _calculateAvoidanceCommand(bool xyorz);
     //bool _checkCollisionRisk(matrix::Vector2f& setpoint);
-	float _getMinimumForwardDistance(const matrix::Vector2f& setpoint);
-	matrix::Vector2f _calculateSlowdownCommand(const matrix::Vector2f& original_cmd, float min_dist);
+	matrix::Vector2f _getMinimumForwardDistance(const matrix::Vector2f& setpoint);
+	float _getMinimumVerticalDistance();
+	template<typename T>
+    T calculateSlowdown(const T &original, float min_dist) const; 
     matrix::Vector2f _blendCommands(const matrix::Vector2f& user_cmd, const matrix::Vector2f& avoid_cmd, float ratio);
 
 };

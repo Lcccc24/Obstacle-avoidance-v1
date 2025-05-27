@@ -1,0 +1,16 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/lc/avoid_ws/devel/lib/python3/dist-packages",
+        "/home/lc/airsim_ws/devel/lib/python3/dist-packages",
+        "/home/lc/mp_ws/devel/lib/python3/dist-packages",
+        "/home/lc/mc_simu_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/lc/avoid_ws/devel/lib/python3/dist-packages",
+        "/home/lc/airsim_ws/devel/lib/python3/dist-packages",
+        "/home/lc/mp_ws/devel/lib/python3/dist-packages",
+        "/home/lc/mc_simu_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ]
+}
