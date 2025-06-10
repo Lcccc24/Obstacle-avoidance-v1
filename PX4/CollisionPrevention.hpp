@@ -225,7 +225,7 @@ private:
 	float _original_setpoint_z;     // 保存的用户原始指令
     hrt_abstime _recovery_start_xy;     // 恢复阶段开始时间
     matrix::Vector2f _last_avoidance_cmd;    // 上一次避障指令
-    static constexpr double RECOVERY_TIME = 1.0f;     // 恢复时间 (s)
+    static constexpr double RECOVERY_TIME = 0.5f;     // 恢复时间 (s)
 	bool BP_XY = false;
 	bool BP_ZUP = false;
     

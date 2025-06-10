@@ -581,19 +581,19 @@ void CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, cons
     if ((constrain_time - _obstacle_map_body_frame.timestamp) < RANGE_STREAM_TIMEOUT_US) {
 		//用户已打杆
         if (setpoint_length > 0.001f) {
-            
+
 			//lc add 检测范围正负18度
 			const float rad_threshold = math::radians(18.0f);
             //xy平面 setpoint_dir设定值归一化 归一化为单位向量
             Vector2f setpoint_dir = setpoint / setpoint_length;
             //最大速度值 设置为模长
             float vel_max = setpoint_length;
-            //最小安全距离 
+            //最小安全距离
             const float min_dist_to_keep = math::max(_obstacle_map_body_frame.min_distance / 100.0f, col_prev_d);
 
 			//lc add 世界系设定弧度
 			const float sp_rad_local = wrap_2pi((atan2f(setpoint_dir(1), setpoint_dir(0))));
-            
+
             //atan2f(setpoint_dir(1), setpoint_dir(0))为世界系下设定速度 减去机体yaw角得到 机体系下设定速度方向
             const float sp_angle_body_frame = atan2f(setpoint_dir(1), setpoint_dir(0)) - vehicle_yaw_angle_rad;
             //缩放到0-360
@@ -615,16 +615,16 @@ void CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, cons
                 // delete stale values
                 //保留计算数据时间
                 const hrt_abstime data_age = constrain_time - _data_timestamps[i];
-                
+
                 //超时则将所有数据置换为无效
                 if (data_age > RANGE_STREAM_TIMEOUT_US) {
                     _obstacle_map_body_frame.distances[i] = UINT16_MAX;
                 }
-                
+
                 //转换单位为米 m
                 const float distance = _obstacle_map_body_frame.distances[i] * 0.01f; // convert to meters
                 const float max_range = _data_maxranges[i] * 0.01f; // convert to meters
-                
+
                 //当前循环中的扇区的对应弧度
                 float angle = math::radians((float)i * INTERNAL_MAP_INCREMENT_DEG + _obstacle_map_body_frame.angle_offset);
 
@@ -653,11 +653,11 @@ void CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, cons
                 if (_obstacle_map_body_frame.distances[i] < UINT16_MAX) {
                     num_fov_bins ++;
                 }
-                
-                //数据有效 
+
+                //数据有效
                 if (_obstacle_map_body_frame.distances[i] > _obstacle_map_body_frame.min_distance
                     && _obstacle_map_body_frame.distances[i] < UINT16_MAX) {
-                       
+
 					//不在检测范围内 直接跳过循环
 					float rad_diff = wrap_pi(angle - sp_rad_local);
                     if (fabsf(rad_diff) > rad_threshold) {
@@ -699,8 +699,8 @@ void CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, cons
 					if (vel_max_bin >= 0) {
 						vel_max = math::min(vel_max, vel_max_bin);
 					}
-				
-                    
+
+
                   //如果目标位置没有传感器数据覆盖，则根据move_no_data决定是否冻结速度
                 } else if (_obstacle_map_body_frame.distances[i] == UINT16_MAX && i == sp_index) {
                     if (!move_no_data || (move_no_data && _data_fov[i])) {
@@ -714,7 +714,7 @@ void CollisionPrevention::_calculateConstrainedSetpoint(Vector2f &setpoint, cons
             if (num_fov_bins == 0) {
                 vel_max = 0.f;
             }
-            //调整后最终值为单位方向向量*速度  
+            //调整后最终值为单位方向向量*速度
             //该函数主要通过遍历并计算邻近扇区（点乘>0）的障碍物信息来调整速度值
             // 调整方向主要在_adaptSetpointDirection 函数中
             setpoint = setpoint_dir * vel_max;
@@ -778,7 +778,7 @@ CollisionPrevention::modifySetpoint(Vector2f &original_setpoint, const float max
 	_constraints_pub.publish(constraints);
 
 	original_setpoint = new_setpoint;
-	
+
 }
 
 void CollisionPrevention::_publishVehicleCmdDoLoiter()
@@ -812,7 +812,7 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint_xy, float &setpointz
 	//bool vertical_bypass = false;
 
 	//用户未打杆时 不检测
-    if (setpoint_xy.norm() < 0.01f && fabs(setpointz) < 0.01f) 
+    if (setpoint_xy.norm() < 0.05f && setpointz < 0.1f && setpointz > -0.1f)
 		return;
 
 	//更新障碍物距离数据
@@ -834,7 +834,7 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint_xy, float &setpointz
 	}
 	else if(setpointz > 0.1f){
 		//下方障碍物 不绕行 参考刹停时处理逻辑
-		BP_ZUP = false;	
+		BP_ZUP = false;
 		//初始速度设定值
 		_original_setpoint_z = setpointz;
 		_ConstrainSetpoint_ZDown(setpointz,_original_setpoint_z);
@@ -911,7 +911,6 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint_xy, float &setpointz
 				}
 			}
 
-
 			if(BP_ZUP == true){
 				if (min_verup_dist >= DECEL_DIS) {
 					bp_state_ = MANUAL;
@@ -929,14 +928,25 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint_xy, float &setpointz
 					}
 				}
 				//若突然又识别到障碍物 切换到绕行状态
-				else
+				else if(min_hor_dist < DECEL_DIS && min_hor_dist > BP_DIS){
+					bp_state_ = SLOWING_DOWN;
+				}
+
+				else if(min_hor_dist <= BP_DIS){
 					bp_state_ = AVOIDING;
+				}
+
 			}
 
 			if(BP_ZUP == true){
-				if(min_verup_dist < DECEL_DIS)
+				if(min_verup_dist < DECEL_DIS && min_verup_dist > BP_DIS)
+					bp_state_ = SLOWING_DOWN;
+
+				if(min_verup_dist <= BP_DIS)
 					bp_state_ = AVOIDING;
 			}
+
+
             break;
     }
 
@@ -972,6 +982,7 @@ void CollisionPrevention::applyAvoidance(Vector2f &setpoint_xy, float &setpointz
         case RECOVERING:
 			//恢复输出 混合绕行命令和原命令 以平滑过渡
             float t = hrt_elapsed_time(&_recovery_start_xy) / (RECOVERY_TIME * 1e6);
+			t = math::constrain(t, 0.0f, 1.0f);
             setpoint_xy = _blendCommands(_original_setpoint_xy, _last_avoidance_cmd, 1.0f - t);
             break;
     }
@@ -1138,14 +1149,14 @@ Vector2f CollisionPrevention::_calculateAvoidanceCommand(bool xyorz) {
 		// 安全评分 = 距离评分 + 方向对齐评分
 		float distance_score = total_dist / (2 * NEIGHBOR_BINS + 1) / SAFE_DISTANCE; //[0,1]
 		float alignment_score = 0.5f*(cosf(rad_diff) + 1.0f); // [0,1]
-		
+
 		float total_score = DISTANCE_GAIN * distance_score + ALIGNMENT_GAIN * alignment_score;
 
 		if(total_score > max_safety){
 			max_safety = total_score;
 			best_direction = Vector2f(cosf(angle),sinf(angle));
 		}
-		
+
 	}
 
 	return best_direction * MAX_AVOID_SPEED;

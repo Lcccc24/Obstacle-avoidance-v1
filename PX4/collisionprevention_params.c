@@ -185,7 +185,7 @@ PARAM_DEFINE_FLOAT(CP_DECEL_DIS, 4.f);
  * Used in Bypass Mode only.
  *
  * @min 1
- * @max 3
+ * @max 4
  * @unit m
  * @group Multicopter Position Control
  */
