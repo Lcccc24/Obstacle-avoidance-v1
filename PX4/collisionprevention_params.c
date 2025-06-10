@@ -85,11 +85,11 @@ PARAM_DEFINE_FLOAT(CP_GUIDE_ANG, 30.f);
  */
 PARAM_DEFINE_INT32(CP_GO_NO_DATA, 0);
 
-/** 
+/**
  * 0 for Brake Mode, 1 for Bypass Mode
- * 
+ *
  * Only used in Position mode.
- * 
+ *
  * @boolean
  * @group Multicopter Position Control
  */
